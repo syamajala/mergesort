@@ -16,3 +16,4 @@ core
 *.bbl
 *.blg
 *.aux
+merge_sort

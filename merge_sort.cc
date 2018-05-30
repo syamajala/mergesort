@@ -9,7 +9,8 @@ enum TaskID {
 };
 
 enum FieldIDs {
-  FID_X
+  FID_X,
+  FID_Y
 };
 
 void top_level_task(const Task *task,
@@ -41,21 +42,37 @@ void top_level_task(const Task *task,
     allocator.allocate_field(sizeof(int), FID_X);
   }
 
+  FieldSpace output_fs = runtime->create_field_space(ctx);
+
+  {
+    FieldAllocator allocator = runtime->create_field_allocator(ctx, output_fs);
+    allocator.allocate_field(sizeof(int), FID_Y);
+  }
+
   LogicalRegion input_lr = runtime->create_logical_region(ctx, is, input_fs);
+  LogicalRegion output_lr = runtime->create_logical_region(ctx, is, output_fs);
 
-  RegionRequirement req(input_lr, READ_WRITE, EXCLUSIVE, input_lr);
-  req.add_field(FID_X);
+  RegionRequirement input_req(input_lr, READ_WRITE, EXCLUSIVE, input_lr);
+  input_req.add_field(FID_X);
 
-  InlineLauncher input_launcher(req);
+  InlineLauncher input_launcher(input_req);
   PhysicalRegion input_region = runtime->map_region(ctx, input_launcher);
 
+  RegionRequirement output_req(output_lr, READ_WRITE, EXCLUSIVE, output_lr);
+  output_req.add_field(FID_Y);
+
+  InlineLauncher output_launcher(output_req);
+  PhysicalRegion output_region = runtime->map_region(ctx, output_launcher);
+
   const FieldAccessor<READ_WRITE, int, 1> acc_x(input_region, FID_X);
+  const FieldAccessor<READ_WRITE, int, 1> acc_y(output_region, FID_Y);
 
   std::srand(std::time(nullptr));
 
   for (PointInRectIterator<1> pir(elem_rect); pir(); pir++)
   {
     acc_x[*pir] = std::rand();
+    acc_y[*pir] = acc_x[*pir];
   }
 
   // launch top_down_merge_sort task
