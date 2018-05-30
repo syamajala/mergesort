@@ -1,3 +1,4 @@
+#include <iostream>
 #include <cstdlib>
 #include <ctime>
 #include "legion.h"
@@ -6,11 +7,24 @@ using namespace Legion;
 
 enum TaskID {
   TOP_LEVEL_TASK_ID,
+  TOP_DOWN_SPLIT_MERGE_TASK_ID,
+  TOP_DOWN_MERGE_TASK_ID
+
 };
 
 enum FieldIDs {
   FID_X,
   FID_Y
+};
+
+struct Args {
+  int iBegin;
+  int iEnd;
+
+  Args(int iBegin, int iEnd) :
+    iBegin ( iBegin ),
+    iEnd   ( iEnd )
+  {};
 };
 
 void top_level_task(const Task *task,
@@ -20,19 +34,19 @@ void top_level_task(const Task *task,
 {
   // Allocate regions and launch merge sort task
 
-  int num_elemnts = 1024;
+  int num_elements = 1024;
 
   const InputArgs &command_args = Runtime::get_input_args();
   for (int i = 1; i < command_args.argc; i++)
   {
     if(!strcmp(command_args.argv[i], "-n"))
     {
-      num_elemnts = atoi(command_args.argv[i]);
-      assert(num_elemnts >= 0);
+      num_elements = atoi(command_args.argv[i]);
+      assert(num_elements >= 0);
     }
   }
 
-  Rect<1> elem_rect(0, num_elemnts-1);
+  Rect<1> elem_rect(0, num_elements-1);
   IndexSpace is = runtime->create_index_space(ctx, elem_rect);
 
   FieldSpace input_fs = runtime->create_field_space(ctx);
@@ -76,6 +90,16 @@ void top_level_task(const Task *task,
   }
 
   // launch top_down_merge_sort task
+  Args args(0, num_elements);
+  TaskLauncher merge_sort(TOP_DOWN_SPLIT_MERGE_TASK_ID, TaskArgument(&args, sizeof(Args)));
+
+  merge_sort.add_region_requirement(RegionRequirement(input_lr, READ_ONLY, EXCLUSIVE, input_lr));
+  merge_sort.region_requirements[0].add_field(FID_X);
+
+  merge_sort.add_region_requirement(RegionRequirement(output_lr, READ_WRITE, EXCLUSIVE, output_lr));
+  merge_sort.region_requirements[1].add_field(FID_Y);
+
+  runtime->execute_task(ctx, merge_sort);
 }
 
 
@@ -122,7 +146,25 @@ void top_down_split_merge(const Task *task,
                           Context ctx,
                           Runtime *runtime)
 {
+  assert(task->arglen == sizeof(Args));
 
+  int iBegin = ((const Args*)task->args)->iBegin;
+  int iEnd = ((const Args*)task->args)->iEnd;
+
+  if (iEnd - iBegin < 2)
+  {
+    return;
+  }
+
+  int iMiddle = (iEnd + iBegin) / 2;
+
+  Rect<1> color_bounds(0, 1);
+  IndexSpace color_is = runtime->create_index_space(ctx, color_bounds);
+
+  IndexSpace is = task->regions[0].region.get_index_space();
+
+  IndexPartition ip = runtime->create_equal_partition(ctx, is, color_is);
+  runtime->attach_name(ip, "ip");
 }
 
 /*
@@ -164,6 +206,18 @@ int main(int argc, char **argv)
     TaskVariantRegistrar registrar(TOP_LEVEL_TASK_ID, "top_level");
     registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
     Runtime::preregister_task_variant<top_level_task>(registrar, "top_level");
+  }
+
+  {
+    TaskVariantRegistrar registrar(TOP_DOWN_SPLIT_MERGE_TASK_ID, "top_down_split_merge");
+    registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
+    Runtime::preregister_task_variant<top_down_split_merge>(registrar, "top_down_split_merge");
+  }
+
+  {
+    TaskVariantRegistrar registrar(TOP_DOWN_MERGE_TASK_ID, "top_down_merge");
+    registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
+    Runtime::preregister_task_variant<top_down_merge>(registrar, "top_down_merge");
   }
 
   return Runtime::start(argc, argv);
