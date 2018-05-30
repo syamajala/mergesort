@@ -1,0 +1,117 @@
+* Tasks
+
+** Launching top level task
+
+Task needs to have:
+1. a task id
+2. the following signature:
+
+#+NAME: task
+#+BEGIN_SRC C++
+enum TaskID {
+    TASK_ID
+}
+
+void task_name(const Task *task,
+               const std::vector<PhysicalRegion> &regions,
+               Context ctx, Runtime *runtime) {
+...
+}
+#+END_SRC
+
+and need to be registered with the runtime using a task variant registrar:
+
+#+NAME: task_registration
+#+BEGIN_SRC C++
+int main(int argc, char **argv)
+{
+  Runtime::set_top_level_task_id(TASK_ID);
+
+  {
+    TaskVariantRegistrar registrar(TASK_ID, "task_name variant");
+    registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
+    Runtime::preregister_task_variant<task_name>(registrar, "task_name task");
+  }
+
+  return Runtime::start(argc, argv);
+}
+#+END_SRC
+
+note for functions that have return value preregister_task_variant is templated on return type and
+function pointer (task name) ie preregister_task_variant<return value, task_name>(...);
+
+** Task variants
+
+Specify things like which process task runs on (CPU or GPU). set_leaf method optimizes task if task launches no
+sub-tasks or does any other legion operations
+
+#+NAME: set_leaf
+#+BEGIN_SRC C++
+int sum_task(const Task *task,
+             const std::vector<PhysicalRegion> &regions,
+             Context ctx, Runtime *runtime) {
+  assert(task->futures.size() == 2);
+  Future f1 = task->futures[0];
+  int r1 = f1.get_result<int>();
+  Future f2 = task->futures[1];
+  int r2 = f2.get_result<int>();
+
+  return (r1 + r2);
+}
+
+int main(int argc, char **argv)
+{
+    {
+      TaskVariantRegistrar registrar(SUM_TASK_ID, "sum");
+      registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
+      registrar.set_leaf(true);
+      Runtime::preregister_task_variant<int, sum_task>(registrar, "sum", AUTO_GENERATE_ID);
+    }
+}
+#+END_SRC
+
+** Task Arguments
+
+TaskArgument objects are used for passing arguments to subtasks. Takes buffer and size in bytes to copy by
+value from buffer. Copy won't happen until execute_task called. Multiple arguments must be packed in single
+buffer.
+
+#+NAME: task_argument
+#+BEGIN_SRC C++
+int fib1 = 10;
+TaskLauncher t1(FIBONACCI_TASK_ID, TaskArgument(&fib1,sizeof(fib1)));
+#+END_SRC
+
+** Launching single task
+
+TaskLaucher objects are used to launch tasks. Takes task id and TaskArgument.
+
+#+NAME: task_launcher
+#+BEGIN_SRC C++
+TaskLauncher t2(FIBONACCI_TASK_ID, TaskArgument(&fib2,sizeof(fib2)));
+Future f2 = runtime->execute_task(ctx, t2);
+#+END_SRC
+
+** Futures
+
+** Rect and Domain
+
+In order to launch multiple tasks we need to describe the dimension of the space. Use Rect to specific
+upper and lower bounds in all dimensions. Note Rect takes Point ex:
+
+#+NAME: rect
+#+BEGIN_SRC C++
+Rect<2> rect(Point(0, 0), Point(10, 10))
+#+END_SRC
+
+If dimension isn't known at compile time use Domain.
+
+** Launching Multiple Tasks
+
+* Regions
+
+** Logical Regions
+
+** Physical Regions
+
+* Partitions
