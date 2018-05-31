@@ -142,11 +142,25 @@ void top_down_split_merge(const Task *task,
                           Context ctx,
                           Runtime *runtime)
 {
-  // assert(task->arglen == sizeof(Args));
   assert(task->regions.size() == 2);
 
-  int iBegin = ((const Args*)task->args)->iBegin;
-  int iEnd = ((const Args*)task->args)->iEnd;
+  int iBegin = 0;
+  int iEnd   = 0;
+
+  if (task->args)
+  {
+    assert(task->arglen == sizeof(Args));
+    iBegin = ((const Args*)task->args)->iBegin;
+    iEnd   = ((const Args*)task->args)->iEnd;
+  }
+  else
+  {
+    assert(task->local_arglen == sizeof(Args));
+    iBegin = ((const Args*)task->local_args)->iBegin;
+    iEnd   = ((const Args*)task->local_args)->iEnd;
+  }
+
+  std::cout << "iBegin: " << iBegin << " iEnd: " << iEnd << std::endl;
 
   if (iEnd - iBegin < 2)
   {
