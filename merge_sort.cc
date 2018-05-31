@@ -64,7 +64,10 @@ void top_level_task(const Task *task,
   }
 
   LogicalRegion input_lr = runtime->create_logical_region(ctx, is, input_fs);
+  runtime->attach_name(input_lr, "input_lr");
+
   LogicalRegion output_lr = runtime->create_logical_region(ctx, is, output_fs);
+  runtime->attach_name(output_lr, "output_lr");
 
   RegionRequirement input_req(input_lr, READ_WRITE, EXCLUSIVE, input_lr);
   input_req.add_field(FID_X);
@@ -117,13 +120,6 @@ TopDownMergeSort(A[], B[], n)
     TopDownSplitMerge(B, 0, n, A);   // sort data from B[] into A[]
 }
 */
-void top_down_merge_sort(const Task *task,
-                         const std::vector<PhysicalRegion> &regions,
-                         Context ctx,
-                         Runtime *runtime)
-{
-
-}
 
 /*
 Sort the given run of array A[] using array B[] as a source.
@@ -146,7 +142,8 @@ void top_down_split_merge(const Task *task,
                           Context ctx,
                           Runtime *runtime)
 {
-  assert(task->arglen == sizeof(Args));
+  // assert(task->arglen == sizeof(Args));
+  assert(task->regions.size() == 2);
 
   int iBegin = ((const Args*)task->args)->iBegin;
   int iEnd = ((const Args*)task->args)->iEnd;
@@ -164,7 +161,30 @@ void top_down_split_merge(const Task *task,
   IndexSpace is = task->regions[0].region.get_index_space();
 
   IndexPartition ip = runtime->create_equal_partition(ctx, is, color_is);
-  runtime->attach_name(ip, "ip");
+
+  LogicalRegion input_lr = task->regions[0].region;
+  LogicalPartition input_lp = runtime->get_logical_partition(ctx, input_lr, ip);
+
+  LogicalRegion output_lr = task->regions[1].region;
+  LogicalPartition output_lp = runtime->get_logical_partition(ctx, output_lr, ip);
+
+  ArgumentMap arg_map;
+
+  Args args_left(iBegin, iMiddle);
+  arg_map.set_point(0, TaskArgument(&args_left, sizeof(Args)));
+
+  Args args_right(iMiddle, iEnd);
+  arg_map.set_point(1, TaskArgument(&args_right, sizeof(Args)));
+
+  IndexLauncher index_launcher(TOP_DOWN_SPLIT_MERGE_TASK_ID, color_is, TaskArgument(NULL, 0), arg_map);
+  index_launcher.add_region_requirement(RegionRequirement(input_lp, 0, READ_ONLY, EXCLUSIVE, input_lr));
+  index_launcher.region_requirements[0].add_field(FID_X);
+  index_launcher.add_region_requirement(RegionRequirement(output_lp, 0, READ_WRITE, EXCLUSIVE, output_lr));
+  index_launcher.region_requirements[1].add_field(FID_Y);
+
+  runtime->execute_index_space(ctx, index_launcher);
+
+  // launch top down merge
 }
 
 /*
