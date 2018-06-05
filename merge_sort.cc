@@ -35,8 +35,9 @@ void top_level_task(const Task *task,
                     Runtime *runtime)
 {
   // Allocate regions and launch merge sort task
-
-  int num_elements = 1024;
+  // int num_elements = 1024;
+  int num_elements = 4;
+  int elements[4] = {8, 4, 3, 1};
 
   const InputArgs &command_args = Runtime::get_input_args();
   for (int i = 1; i < command_args.argc; i++)
@@ -67,10 +68,8 @@ void top_level_task(const Task *task,
   }
 
   LogicalRegion input_lr = runtime->create_logical_region(ctx, is, input_fs);
-  runtime->attach_name(input_lr, "input_lr");
 
   LogicalRegion output_lr = runtime->create_logical_region(ctx, is, output_fs);
-  runtime->attach_name(output_lr, "output_lr");
 
   RegionRequirement input_req(input_lr, READ_WRITE, EXCLUSIVE, input_lr);
   input_req.add_field(FID_X);
@@ -88,15 +87,21 @@ void top_level_task(const Task *task,
   const FieldAccessor<READ_WRITE, int, 1> acc_y(output_region, FID_Y);
 
   std::srand(std::time(nullptr));
-  std::cout << "Populating:";
+  std::cout << "Populating: [";
+  int i = 0;
   for (PointInRectIterator<1> pir(elem_rect); pir(); pir++)
   {
-    acc_x[*pir] = std::rand();
-    acc_y[*pir] = acc_x[*pir];
-    std::cout << " " << acc_x[*pir];
+    // int e = std::rand();
+    int e = elements[i];
+    acc_x[*pir] = e;
+    acc_y[*pir] = e;
+    std::cout << acc_x[*pir] << ", ";
+    i++;
   }
-  std::cout << std::endl;
+  std::cout << "]"<< std::endl;
+
   // launch top_down_merge_sort task
+
   Args args(0, 0, num_elements);
   TaskLauncher merge_sort(TOP_DOWN_SPLIT_MERGE_TASK_ID, TaskArgument(&args, sizeof(Args)));
 
@@ -106,12 +111,12 @@ void top_level_task(const Task *task,
   merge_sort.add_region_requirement(RegionRequirement(output_lr, READ_WRITE, EXCLUSIVE, output_lr));
   merge_sort.region_requirements[1].add_field(FID_Y);
 
-  Future output = runtime->execute_task(ctx, merge_sort);
+  runtime->execute_task(ctx, merge_sort);
 
-  std::cout << "Output:";
+  std::cout << "Output: ";
   for (PointInRectIterator<1> pir(elem_rect); pir(); pir++)
   {
-    std::cout << " " << acc_y[*pir];
+    std::cout << acc_y[*pir] << " ";
   }
   std::cout << std::endl;
 }
@@ -200,8 +205,10 @@ void top_down_split_merge(const Task *task,
   arg_map.set_point(1, TaskArgument(&args_right, sizeof(Args)));
 
   IndexLauncher index_launcher(TOP_DOWN_SPLIT_MERGE_TASK_ID, color_is, TaskArgument(NULL, 0), arg_map);
+
   index_launcher.add_region_requirement(RegionRequirement(input_lp, 0, READ_ONLY, EXCLUSIVE, input_lr));
   index_launcher.region_requirements[0].add_field(FID_X);
+
   index_launcher.add_region_requirement(RegionRequirement(output_lp, 0, READ_WRITE, EXCLUSIVE, output_lr));
   index_launcher.region_requirements[1].add_field(FID_Y);
 
@@ -254,9 +261,8 @@ void top_down_merge(const Task *task,
   int iEnd    = ((const Args*)task->args)->iEnd;
   int i       = iBegin;
   int j       = iMiddle;
-  int k       = iBegin;
 
-  std::cout << "iBegin: " << iBegin << " iEnd: " << iEnd << std::endl;
+  std::cout << "iBegin: " << iBegin << " iMiddle: " << iMiddle << " iEnd: " << iEnd << std::endl;
 
   FieldID input_fid = *(task->regions[0].privilege_fields.begin());
   const FieldAccessor<READ_ONLY,int,1> acc_x(regions[0], input_fid);
@@ -269,16 +275,17 @@ void top_down_merge(const Task *task,
   {
     if (i < iMiddle && (j >= iEnd || acc_x[Point<1>(i)] <= acc_x[Point<1>(j)]))
     {
-      acc_y[*pir] = acc_x[Point<1>(i)];
+      int x = acc_x[Point<1>(i)];
+      acc_y[*pir] = x;
       i++;
     }
     else
     {
-      acc_y[*pir] = acc_x[Point<1>(j)];
+      int x = acc_x[Point<1>(j)];
+      acc_y[*pir] = x;
       j++;
     }
-    k++;
-    std::cout << " " << acc_y[*pir];
+    std::cout << acc_y[*pir] << " ";
   }
   std::cout << std::endl;
 }
